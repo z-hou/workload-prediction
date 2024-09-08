@@ -103,9 +103,9 @@ def data_process_SV(root_path, seq_length):
 
              Bd.append(new_nd_data)
         count += 1
-        print("!!!!!!!!!", count)
-        if count == 100:
-            break
+    print("Totally {} *.csv files".format(count))
+        #if count == 100:
+        #    break
     
     All_Series = np.vstack(Bd)
     All_Series = All_Series.astype(np.float32)
@@ -174,13 +174,19 @@ def data_scaler(data):
 
 
 
-def build_model(input_dim, hidden_dim, num_layers, output_dim):
-    model = LSTM(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, num_layers=num_layers)
+def build_model(input_dim, hidden_dim, num_layers, output_dim, device):
+    model = LSTM(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, num_layers=num_layers, device=device)
     #model = LSTMAttention(input_size=input_dim, hidden_size=hidden_dim, num_layers=num_layers, output_size=output_dim)
 
     return model
 
-def train(model, num_epochs, x_train, y_train_lstm, criterion, optimiser):
+def train(model, num_epochs, x_train, y_train_lstm, criterion, optimiser, device):
+
+    model = model.to(device)
+    model.train()
+    x_train = x_train.to(device)
+    y_train_lstm = y_train_lstm.to(device)
+
     loss_list=[]
     for i in range(num_epochs):
         y_train_pred = model(x_train)
@@ -193,11 +199,12 @@ def train(model, num_epochs, x_train, y_train_lstm, criterion, optimiser):
     #torch.save(model, "price_predictor_epo{}.pth".format(num_epochs))
     return y_train_pred, loss_list
 
-def evaluation(model, x_test, test_label):
+def evaluation(model, x_test, test_label, device):
     model = model.eval()
     #torch.onnx.export(model, x_test, "model.onnx", verbose=True)
+    x_test = x_test.to(device)
     test_pred = model(x_test)
-    test_pred = test_pred.detach().numpy()
+    test_pred = test_pred.detach().cpu().numpy()
     #print("check y_test_pred: ", y_test_pred)
     print("predcition is: ", test_pred.shape, type(test_pred), type(test_label), test_label.shape)
     rme_value = math.sqrt(mean_squared_error(test_label[:,0], test_pred[:,0]))
@@ -209,7 +216,7 @@ def evaluation(model, x_test, test_label):
 if __name__ == '__main__':
 
 
-    root_data = r"/Users/zhouz/Project/VM_Workload_Predictor/fastStorage/VMmonitoring"
+    root_data = r"/proj/zhou-cognit/users/x_zhozh/project/faststorage/VMmonitoring"
     All_Series = data_process_SV(root_data, 100)
     
     
@@ -231,22 +238,29 @@ if __name__ == '__main__':
     test_label_lstm = torch.from_numpy(test_label).type(torch.Tensor)
 
     input_dim = 1
-    hidden_dim = 32
+    hidden_dim = 256
     num_layers = 2
     output_dim = 1
-    num_epochs = 600
+    num_epochs = 100
 
-    model = build_model(input_dim, hidden_dim, num_layers, output_dim)
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+
+    print(f"Using device: {device}")
+
+    model = build_model(input_dim, hidden_dim, num_layers, output_dim, device).to(device)
     criterion = torch.nn.MSELoss()
     optimiser = torch.optim.Adam(model.parameters(), lr=0.005)
 
 
-    y_train_pred, loss_list = train(model, num_epochs, train_data, train_label_lstm, criterion, optimiser)
+    y_train_pred, loss_list = train(model, num_epochs, train_data, train_label_lstm, criterion, optimiser, device)
     plt.figure()
     plt.plot(loss_list, color='b', label='loss curve')
-    plt.savefig('CPU_loss_curve.png')
+    plt.savefig('CPU_loss_curve.pdf')
 
-    test_pred = evaluation(model, test_data, test_label)
+    test_pred = evaluation(model, test_data, test_label, device)
     #print(test_pred.shape)
     #print(test_label.shape)
     #test_pred = test_pred.reshape(-1,300)
@@ -264,8 +278,9 @@ if __name__ == '__main__':
     plt.plot(test_label[:100], color='g')
     plt.xlabel('timestamp')
     plt.ylabel('CPU Usage')
-    plt.legend()
-    plt.show()
+    plt.savefig('CPU_prediction.pdf')
+    #plt.legend()
+    #plt.show()
 
 
 
