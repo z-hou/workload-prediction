@@ -4,9 +4,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
 from model import LSTM, LSTMAttention
+from dataset import Workload_dataset
 import time, os
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader
 import math
 from sklearn.metrics import mean_squared_error
 
@@ -69,6 +71,7 @@ def data_process(root_path, seq_length):
 def data_process_SV(root_path, seq_length):
     count = 0
     Bd = []
+    print("#### Now is Extracting Data From Original *.CSV file, Please Wait ####")
     for csv_data in os.listdir(root_path):
 
         data_path = os.path.join(root_path, csv_data)
@@ -142,7 +145,13 @@ def data_split(Time_series_data, amount, subset):
     print("x_test's shape: ", test_data.shape)
     print("y_test's shape: ", test_label.shape)
 
-    return train_data, train_label, test_data, test_label
+    ### Put in torch dataloader
+    train_dataset = Workload_dataset(train_data, train_label)
+    test_dataset = Workload_dataset(test_data, test_label)
+    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True, num_workers=1)
+    test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False, num_workers=1)
+
+    return train_loader, test_loader
 
 
 def data_scaler(data):
@@ -180,37 +189,69 @@ def build_model(input_dim, hidden_dim, num_layers, output_dim, device):
 
     return model
 
-def train(model, num_epochs, x_train, y_train_lstm, criterion, optimiser, device):
+def train(model, num_epochs, train_loader, test_loader, criterion, optimiser, device):
 
     model = model.to(device)
-    model.train()
-    x_train = x_train.to(device)
-    y_train_lstm = y_train_lstm.to(device)
-
-    loss_list=[]
+    
+    train_loss_list=[]
+    test_loss_list = []
     for i in range(num_epochs):
-        y_train_pred = model(x_train)
-        loss = criterion(y_train_pred, y_train_lstm)
-        print("Epoch ", i, "MSE: ", loss.item())
-        loss_list.append(loss.item())
-        optimiser.zero_grad()
-        loss.backward()
-        optimiser.step()
-    #torch.save(model, "price_predictor_epo{}.pth".format(num_epochs))
-    return y_train_pred, loss_list
+        model.train()
+        train_loss_epoch = 0.0
 
-def evaluation(model, x_test, test_label, device):
+        for data in train_loader:
+            x_train, y_train = data[0].to(device), data[1].to(device)
+            y_train_pred = model(x_train)
+            loss = criterion(y_train_pred, y_train)
+            train_loss_epoch += loss
+            optimiser.zero_grad()
+            loss.backward()
+            optimiser.step()
+
+        avg_train_loss = train_loss_epoch / len(train_loader)
+        train_loss_list.append(avg_train_loss.item())
+        
+        ##Evaluation
+        model.eval()
+        eval_loss_epoch = 0.0
+        with torch.no_grad():
+            for test_data in test_loader:
+                x_test, y_test = test_data[0].to(device), test_data[1].to(device)
+                y_test_pred = model(x_test)
+                loss = criterion(y_test_pred, y_test)
+                eval_loss_epoch += loss
+        avg_test_loss = eval_loss_epoch / len(test_loader)
+        test_loss_list.append(avg_test_loss.item())
+        print("Epoch ", i, "Train Loss: ", round(avg_train_loss.item(), 7), "Test Loss: ", round(avg_test_loss.item(), 7))
+            
+
+    #torch.save(model, "price_predictor_epo{}.pth".format(num_epochs))
+    return train_loss_list, test_loss_list
+
+def evaluation(model, test_loader, device):
     model = model.eval()
-    #torch.onnx.export(model, x_test, "model.onnx", verbose=True)
-    x_test = x_test.to(device)
-    test_pred = model(x_test)
-    test_pred = test_pred.detach().cpu().numpy()
-    #print("check y_test_pred: ", y_test_pred)
-    print("predcition is: ", test_pred.shape, type(test_pred), type(test_label), test_label.shape)
-    rme_value = math.sqrt(mean_squared_error(test_label[:,0], test_pred[:,0]))
+    test_pred = []
+    test_label = []
+    with torch.no_grad():
+        for test_data in test_loader:
+            x_test, y_test = test_data[0].to(device), test_data[1].to(device)
+            y_test_pred = model(x_test)
+
+            y_test_pred = y_test_pred.detach().cpu().numpy()
+            y_test = y_test.detach().cpu().numpy()
+
+            test_pred.append(y_test_pred)
+            test_label.append(y_test)
+
+    #print("check test_pred: ", len(test_pred), test_pred[-1].shape)
+    #print("check test_label: ", len(test_label), test_label[-1].shape)
+    test_label = np.concatenate(test_label, axis=0)
+    test_pred = np.concatenate(test_pred, axis=0)
+    print("predcition is: ", test_pred.shape, " | ", test_label.shape)
+    rme_value = math.sqrt(mean_squared_error(test_label, test_pred))
     print('RME value: %.2f RMSE' % (rme_value))
 
-    return test_pred
+    return test_pred, test_label
 
 
 if __name__ == '__main__':
@@ -229,19 +270,19 @@ if __name__ == '__main__':
     All_Series = All_Series.reshape(-1, 100)
     All_Series = np.expand_dims(All_Series, axis=-1)
 
-    train_data, train_label, test_data, test_label = data_split(All_Series, 2000, subset=False)
+    train_data, test_data = data_split(All_Series, 2000, subset=False)
 
-    train_data = torch.from_numpy(train_data).type(torch.Tensor)
-    test_data = torch.from_numpy(test_data).type(torch.Tensor)
+    #train_data = torch.from_numpy(train_data).type(torch.Tensor)
+    #test_data = torch.from_numpy(test_data).type(torch.Tensor)
     
-    train_label_lstm = torch.from_numpy(train_label).type(torch.Tensor)
-    test_label_lstm = torch.from_numpy(test_label).type(torch.Tensor)
+    #train_label_lstm = torch.from_numpy(train_label).type(torch.Tensor)
+    #test_label_lstm = torch.from_numpy(test_label).type(torch.Tensor)
 
     input_dim = 1
-    hidden_dim = 256
+    hidden_dim = 64
     num_layers = 2
     output_dim = 1
-    num_epochs = 100
+    num_epochs = 50
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -252,15 +293,20 @@ if __name__ == '__main__':
 
     model = build_model(input_dim, hidden_dim, num_layers, output_dim, device).to(device)
     criterion = torch.nn.MSELoss()
-    optimiser = torch.optim.Adam(model.parameters(), lr=0.005)
+    optimiser = torch.optim.Adam(model.parameters(), lr=0.0005)
+
+    train_loss_list, test_loss_list = train(model, num_epochs, train_data, test_data, criterion, optimiser, device)
 
 
-    y_train_pred, loss_list = train(model, num_epochs, train_data, train_label_lstm, criterion, optimiser, device)
     plt.figure()
-    plt.plot(loss_list, color='b', label='loss curve')
-    plt.savefig('CPU_loss_curve.pdf')
+    plt.plot(train_loss_list, color='b', label='train loss curve')
+    plt.savefig('CPU_train_loss_curve.jpg')
 
-    test_pred = evaluation(model, test_data, test_label, device)
+    plt.figure()
+    plt.plot(test_loss_list, color='b', label='test loss curve')
+    plt.savefig('CPU_test_loss_curve.jpg')
+
+    test_pred, test_label = evaluation(model, test_data, device)
     #print(test_pred.shape)
     #print(test_label.shape)
     #test_pred = test_pred.reshape(-1,300)
@@ -273,12 +319,15 @@ if __name__ == '__main__':
     test_pred = test_pred.reshape(-1,1)
     test_label = test_label.reshape(-1,1)
 
+    ##Get random number
+    indexs = np.random.randint(1, test_pred.shape[0], size=200).tolist()
+
     plt.figure()
-    plt.plot(test_predict[:100], color='b')
-    plt.plot(test_label[:100], color='g')
+    plt.plot(test_predict[indexs], color='b')
+    plt.plot(test_label[indexs], color='g')
     plt.xlabel('timestamp')
     plt.ylabel('CPU Usage')
-    plt.savefig('CPU_prediction.pdf')
+    plt.savefig('CPU_prediction.jpg')
     #plt.legend()
     #plt.show()
 

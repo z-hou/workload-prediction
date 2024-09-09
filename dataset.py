@@ -15,3 +15,4 @@ class Workload_dataset(Dataset):
         future_data = self.labels[index]
         
         return history_data, future_data
+
