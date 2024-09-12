@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
 from model import LSTM, LSTMAttention
-from dataset import Workload_dataset
+from dataset import load_all_csv, Workload_dataset
 import time, os
 import torch
 import torch.nn as nn
@@ -257,18 +257,19 @@ def evaluation(model, test_loader, device):
 if __name__ == '__main__':
 
 
-    root_data = r"/proj/zhou-cognit/users/x_zhozh/project/faststorage/VMmonitoring"
-    All_Series = data_process_SV(root_data, 100)
+    root_data_path = r"/Users/zhouz/Project/VMmonitoring"
+    All_Series = load_all_csv(root_data_path, 100)
+    print("Check All Series shape: ", All_Series.shape)### 
     
     
     #length = All_Series.shape[0]
-    All_Series = All_Series.reshape(-1, 1)
-    scaler = MinMaxScaler(feature_range=(0, 1))
+    #All_Series = All_Series.reshape(-1, 1)
+    #scaler = MinMaxScaler(feature_range=(0, 1))
     
-    All_Series = scaler.fit_transform(All_Series)
+    #All_Series = scaler.fit_transform(All_Series)
     #print(np.max(All_Series), " ", np.min(All_Series))
-    All_Series = All_Series.reshape(-1, 100)
-    All_Series = np.expand_dims(All_Series, axis=-1)
+    #All_Series = All_Series.reshape(-1, 100)
+    #All_Series = np.expand_dims(All_Series, axis=-1)
 
     train_data, test_data = data_split(All_Series, 2000, subset=False)
 
@@ -278,14 +279,16 @@ if __name__ == '__main__':
     #train_label_lstm = torch.from_numpy(train_label).type(torch.Tensor)
     #test_label_lstm = torch.from_numpy(test_label).type(torch.Tensor)
 
-    input_dim = 1
+    input_dim = 4
     hidden_dim = 64
     num_layers = 2
-    output_dim = 1
+    output_dim = 4
     num_epochs = 50
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
     else:
         device = torch.device("cpu")
 

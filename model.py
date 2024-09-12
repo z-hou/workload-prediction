@@ -11,8 +11,7 @@ class LSTM(nn.Module):
 
         self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True)
         self.fc_1 = nn.Linear(hidden_dim, output_dim)
-        self.fc_2 = nn.Linear(hidden_dim, output_dim)
-        self.fc_3 = nn.Linear(hidden_dim, output_dim)
+
 
         self.device = device
 
@@ -23,10 +22,9 @@ class LSTM(nn.Module):
         #print("check lstm's out shape: ", out.shape)
         out_1 = self.fc_1(out[:, -1, :])
         #print("check fully-connect's out shape: ", out_1.shape)
-        #out_2 = self.fc_2(out[:, -1, :])
-        #out_3 = self.fc_3(out[:, -1, :])
-        #output = torch.cat([out_1, out_2, out_3], dim=1)
+        #output = torch.cat([out_1, out_2, out_3, out_4], dim=1)
         #print("check model's out shape: ", output.shape)
+        #print("Check out_1 shape: ", out_1.size())
         return out_1
 
 class LSTMAttention(nn.Module):

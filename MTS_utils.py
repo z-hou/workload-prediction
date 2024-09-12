@@ -9,8 +9,15 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import silhouette_score
 
 
+def eval_by_silhouette(data, catogories):
+    #data = data.cpu().numpy()
+    #catogories = catogories.cpu().numpy()
+    score = silhouette_score(data, catogories)
 
-def normalization_per_channel(data):
+    return score
+
+
+def norm_channel(data):
     print("norm_channel shape: ", data.shape)
     n_features = data.shape[2]
 
@@ -77,7 +84,9 @@ def load_all_csv(root_path, seq_length):
                 net_transmit.append(float(row[idx_net_transmit]))
 
 
-            all_data_list = [cpu_usage_percent, memory_usage, disk_write, net_transmit]
+            all_data_list = [cpu_cores, cpu_capicity,  cpu_usage_percent, 
+                                 mem_capicity, memory_usage,  disk_write,  
+                                 net_transmit]
             ##Organize data
 
             feature_numbers = len(all_data_list)
@@ -91,28 +100,45 @@ def load_all_csv(root_path, seq_length):
 
             Bd.append(new_nd_data)
         count += new_nd_data.shape[0]
+        if count > 70000:
+            break
 
     All_Series = np.vstack(Bd).astype(np.float32)
-    All_Series = normalization_per_channel(All_Series).reshape(-1, seq_length, feature_numbers)
+    All_Series = norm_channel(All_Series)
+
+    '''##Normalized in coarse-grained manner
+    print(All_Series.shape)
+    All_Series = All_Series.astype(np.float32).reshape(-1, int(feature_numbers*seq_length))
+    scaler = MinMaxScaler(feature_range=(-1, 1))
+    All_Series = scaler.fit_transform(All_Series)
+    print(All_Series.dtype)
 
     print(All_Series.shape)
-    return All_Series
+    print("Max {}, min {}".format(np.max(All_Series), np.min(All_Series)))
+    '''
+
+    y = np.ones((All_Series.shape[0],))
+    print(All_Series.shape)
+    return All_Series, y
 
 
+class CreateDataset(Dataset):
 
+    def __init__(self):
+        data, label = load_all_csv(r"/Users/zhouz/official_repo/ai-orchestrator/src/ml-models/Idec/VMmonitoring", seq_length=112)
+        parti_point = int(0.8*data.shape[0])
+        self.x = data[:parti_point, :]
+        self.y = label[:parti_point]
+        self.testdata = data[parti_point:, :]
+        self.test_y = label[parti_point:]
 
-class Workload_dataset(Dataset):
-    def __init__(self, data, labels):
-        self.data = data
-        self.labels = labels
-    
     def __len__(self):
-        return len(self.data)
-    
-    def __getitem__(self, index):
+        return self.x.shape[0]
 
-        history_data = self.data[index]
-        future_data = self.labels[index]
-        
-        return history_data, future_data
+    def __getitem__(self, idx):
+        return torch.from_numpy(np.array(self.x[idx])), torch.from_numpy(np.array(self.y[idx])), torch.from_numpy(np.array(idx))
 
+if __name__ == "__main__":
+    dataset = CreateDataset()
+    train_loader = DataLoader(
+        dataset, batch_size=32, shuffle=False)
