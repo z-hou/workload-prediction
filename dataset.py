@@ -5,24 +5,29 @@ from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 import csv
 import os
+import pickle
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import silhouette_score
 
 
 
-def normalization_per_channel(data):
+def normalization_per_channel(data, seq_length):
     print("norm_channel shape: ", data.shape)
     n_features = data.shape[2]
+    data = data.reshape(-1, n_features)
 
     nor_data = []
+    scalers = []
     for i in range(n_features):
-        feature = data[:, :, i]
-        scaler = MinMaxScaler(feature_range=(-1, 1))
+        feature = data[:, i].reshape(-1, 1)
+        print("Check Feature shape: ", feature.shape)
+        scaler = MinMaxScaler(feature_range=(0, 1))
         feature = scaler.fit_transform(feature)
         nor_data.append(feature)
-
+        scalers.append(scaler)
     All_Series = np.hstack(nor_data)
-    return All_Series
+    print("In normalization: ", All_Series.shape)
+    return All_Series, scalers
 
 
 
@@ -93,10 +98,23 @@ def load_all_csv(root_path, seq_length):
         count += new_nd_data.shape[0]
 
     All_Series = np.vstack(Bd).astype(np.float32)
-    All_Series = normalization_per_channel(All_Series).reshape(-1, seq_length, feature_numbers)
+    print("Check All_Series after vstack: ", All_Series.shape)
+    All_Series, scalers = normalization_per_channel(All_Series, seq_length)
+    All_Series = All_Series.reshape(-1, seq_length, feature_numbers)
+    #Save scalers
+    scalers_dict = {}
+    scalers_dict["cpu_usage_percent"] = scalers[0]
+    scalers_dict["memory_usage"] = scalers[1]
+    scalers_dict["disk_write"] = scalers[2]
+    scalers_dict["net_transmit"] = scalers[3]
 
+    with open('./data/scalers_dict.pkl', 'wb') as f:
+        pickle.dump(scalers_dict, f)
+
+    ##Save Data
+    np.save('./data/workload_series.npy', All_Series)
     print(All_Series.shape)
-    return All_Series
+    return All_Series, scalers_dict
 
 
 

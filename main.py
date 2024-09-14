@@ -11,126 +11,11 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 import math
 from sklearn.metrics import mean_squared_error
+import pickle
 
 
-def data_process(root_path, seq_length):
+def data_split(Time_series_data):
 
-    Bd = []
-    count = 0
-    for csv_data in os.listdir(root_path):
-        count += 1
-        data_path = os.path.join(root_path, csv_data)
-        with open(data_path, 'r') as file:
-            vm_trace = csv.reader(file, delimiter=';')
-            headers = next(vm_trace)
-            print(headers)
-
-            #data_list
-            cpu_usage = []
-            memory_usage = []
-            disk_write = []
-            idx_cpu_usage = headers.index('\tCPU usage [%]')
-            idx_memory_usage = headers.index('\tMemory usage [KB]')
-            idx_disk_write = headers.index('\tDisk write throughput [KB/s]')
-
-            for row in vm_trace:
-                #print(float(row[idx_cpu_usage]))
-                cpu_usage.append(float(row[idx_cpu_usage]))
-                memory_usage.append(float(row[idx_memory_usage]))
-                disk_write.append(float(row[idx_disk_write]))
-
-            all_data_list = [cpu_usage, memory_usage, disk_write]
-            nd_data = np.array(all_data_list)
-
-            remainder = nd_data.shape[1]%seq_length
-            #print(remainder)
-            new_nd_data = nd_data[:, :-remainder].reshape(len(all_data_list), seq_length, -1)
-            new_nd_data = new_nd_data.transpose((2, 1, 0))
-            #print(new_nd_data.shape)
-
-            Bd.append(new_nd_data)
-        count += 1
-        print("!!!!!!!!!", count)
-        if count == 100:
-            break
-
-        
-    
-    All_Series = np.vstack(Bd)
-    All_Series = All_Series.astype(np.float32)
-    #scaler = MinMaxScaler(feature_range=(-1, 1))
-    #data_raw = scaler.fit_transform(nd_data)
-    print(All_Series.dtype)
-
-    print(All_Series.shape)
-
-    return All_Series
-
-
-
-def data_process_SV(root_path, seq_length):
-    count = 0
-    Bd = []
-    print("#### Now is Extracting Data From Original *.CSV file, Please Wait ####")
-    for csv_data in os.listdir(root_path):
-
-        data_path = os.path.join(root_path, csv_data)
-        with open(data_path, 'r') as file:
-             vm_trace = csv.reader(file, delimiter=';')
-             headers = next(vm_trace)
-             #print(headers)
-
-             #data_list
-             cpu_usage = []
-             memory_usage = []
-             disk_write = []
-             idx_cpu_usage = headers.index('\tCPU usage [%]')
-             #idx_cpu_usage = headers.index('\tMemory usage [KB]')
-             #idx_cpu_usage = headers.index('\tDisk write throughput [KB/s]')
-
-
-             for row in vm_trace:
-                 #print(float(row[idx_cpu_usage]))
-                 cpu_usage.append(float(row[idx_cpu_usage]))
-
-             all_data_list = cpu_usage
-             nd_data = np.array(all_data_list)
-             #print(nd_data.shape)
-             #print(nd_data)
-
-             remainder = nd_data.shape[0]%seq_length
-             #print(remainder)
-             new_nd_data = nd_data[:-remainder].reshape(-1, seq_length)
-             #new_nd_data = new_nd_data.transpose((2, 1, 0))
-             #print(new_nd_data.shape)
-
-             Bd.append(new_nd_data)
-        count += 1
-    print("Totally {} *.csv files".format(count))
-        #if count == 100:
-        #    break
-    
-    All_Series = np.vstack(Bd)
-    All_Series = All_Series.astype(np.float32)
-    #scaler = MinMaxScaler(feature_range=(-1, 1))
-    #data_raw = scaler.fit_transform(nd_data)
-    #print(All_Series.dtype)
-
-    print(All_Series.shape)
-
-    return All_Series
-
-
-
-
-
-
-def data_split(Time_series_data, amount, subset):
-
-    #amount: choose a subset of data
-    if subset == True:
-        Time_series_data = Time_series_data[:amount, :, :]
-    
     test_set_size = int(np.round(0.2 * Time_series_data.shape[0]))
     train_set_size = Time_series_data.shape[0] - (test_set_size)
 
@@ -180,9 +65,6 @@ def data_scaler(data):
     return All_Series, scaler_cpu, scaler_mem, scaler_disk
 
 
-
-
-
 def build_model(input_dim, hidden_dim, num_layers, output_dim, device):
     model = LSTM(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim, num_layers=num_layers, device=device)
     #model = LSTMAttention(input_size=input_dim, hidden_size=hidden_dim, num_layers=num_layers, output_size=output_dim)
@@ -224,8 +106,8 @@ def train(model, num_epochs, train_loader, test_loader, criterion, optimiser, de
         test_loss_list.append(avg_test_loss.item())
         print("Epoch ", i, "Train Loss: ", round(avg_train_loss.item(), 7), "Test Loss: ", round(avg_test_loss.item(), 7))
             
-
-    #torch.save(model, "price_predictor_epo{}.pth".format(num_epochs))
+    ## Save Model
+    torch.save(model, "./checkpoint/model_lastest.pth")
     return train_loss_list, test_loss_list
 
 def evaluation(model, test_loader, device):
@@ -257,33 +139,37 @@ def evaluation(model, test_loader, device):
 if __name__ == '__main__':
 
 
-    root_data_path = r"/Users/zhouz/Project/VMmonitoring"
-    All_Series = load_all_csv(root_data_path, 100)
-    print("Check All Series shape: ", All_Series.shape)### 
-    
-    
-    #length = All_Series.shape[0]
-    #All_Series = All_Series.reshape(-1, 1)
-    #scaler = MinMaxScaler(feature_range=(0, 1))
-    
-    #All_Series = scaler.fit_transform(All_Series)
-    #print(np.max(All_Series), " ", np.min(All_Series))
-    #All_Series = All_Series.reshape(-1, 100)
-    #All_Series = np.expand_dims(All_Series, axis=-1)
+    #root_data_path = r"/Users/zhouz/Project/VMmonitoring"
+    if os.path.exists("./data/workload_series.npy") and os.path.exists("./data/scalers_dict.pkl"):
+        print("Load Normalized series data from ./data/workload_series.npy")
+        print("Load saved scaler from ./data/scalers_dict.pkl")
+        All_Series = np.load('./data/workload_series.npy')
+        with open('./data/scalers_dict.pkl', 'rb') as f:
+            scalers = pickle.load(f)
+    else:
+        print("Load data from original *.CSV file")
+        root_data_path = r"/proj/zhou-cognit/users/x_zhozh/project/faststorage/VMmonitoring"
+        All_Series, scalers = load_all_csv(root_data_path, 100)
+    print("Check All Series shape: ", All_Series.shape)###
+    print("Check All scalers: ", scalers.keys())
+    np.random.shuffle(All_Series)
 
-    train_data, test_data = data_split(All_Series, 2000, subset=False)
 
-    #train_data = torch.from_numpy(train_data).type(torch.Tensor)
-    #test_data = torch.from_numpy(test_data).type(torch.Tensor)
+    ##TEST
+    #test_array = np.array([0.9, 0.8, 0.6, 0.5])
+    #test_array = test_array.reshape(-1, 1)
+    #original = scalers["cpu_usage_percent"].inverse_transform(test_array)
+    #print("Finished")
+
     
-    #train_label_lstm = torch.from_numpy(train_label).type(torch.Tensor)
-    #test_label_lstm = torch.from_numpy(test_label).type(torch.Tensor)
+
+    train_data, test_data = data_split(All_Series)
 
     input_dim = 4
     hidden_dim = 64
     num_layers = 2
     output_dim = 4
-    num_epochs = 50
+    num_epochs = 300
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -296,7 +182,7 @@ if __name__ == '__main__':
 
     model = build_model(input_dim, hidden_dim, num_layers, output_dim, device).to(device)
     criterion = torch.nn.MSELoss()
-    optimiser = torch.optim.Adam(model.parameters(), lr=0.0005)
+    optimiser = torch.optim.Adam(model.parameters(), lr=0.00005)
 
     train_loss_list, test_loss_list = train(model, num_epochs, train_data, test_data, criterion, optimiser, device)
 
@@ -310,147 +196,50 @@ if __name__ == '__main__':
     plt.savefig('CPU_test_loss_curve.jpg')
 
     test_pred, test_label = evaluation(model, test_data, device)
-    #print(test_pred.shape)
-    #print(test_label.shape)
-    #test_pred = test_pred.reshape(-1,300)
-    #test_label = test_label.reshape(-1,300)
-    #print(test_pred.shape)
-    #print(test_label.shape)
-    test_predict = scaler.inverse_transform(test_pred)
-    test_label = scaler.inverse_transform(test_label)
-    
-    test_pred = test_pred.reshape(-1,1)
-    test_label = test_label.reshape(-1,1)
+    test_pred = np.clip(test_pred, 0, None)
+    test_label = np.clip(test_label, 0, None)
 
-    ##Get random number
+    ##Get random index for easier visualization
     indexs = np.random.randint(1, test_pred.shape[0], size=200).tolist()
 
-    plt.figure()
-    plt.plot(test_predict[indexs], color='b')
-    plt.plot(test_label[indexs], color='g')
-    plt.xlabel('timestamp')
-    plt.ylabel('CPU Usage')
-    plt.savefig('CPU_prediction.jpg')
-    #plt.legend()
-    #plt.show()
+    fig, axs = plt.subplots(2, 2)
 
+    '''
+    axs[0, 0].plot(scalers["cpu_usage_percent"].transform(test_pred[:,0].reshape(-1,1))[indexs], color='b')
+    axs[0, 0].plot(scalers["cpu_usage_percent"].transform(test_label[:,0].reshape(-1,1))[indexs], color='g')
+    axs[0, 0].set_title('cpu_usage_percent')
 
+    axs[0, 1].plot(scalers["memory_usage"].transform(test_pred[:,1].reshape(-1,1))[indexs], color='b')
+    axs[0, 1].plot(scalers["memory_usage"].transform(test_label[:,1].reshape(-1,1))[indexs], color='g')
+    axs[0, 1].set_title('memory_usage')
 
+    axs[1, 0].plot(scalers["disk_write"].transform(test_pred[:,2].reshape(-1,1))[indexs], color='b')
+    axs[1, 0].plot(scalers["disk_write"].transform(test_label[:,2].reshape(-1,1))[indexs], color='g')
+    axs[1, 0].set_title('disk_write')
 
-'''
+    axs[1, 1].plot(scalers["net_transmit"].transform(test_pred[:,3].reshape(-1,1))[indexs], color='b')
+    axs[1, 1].plot(scalers["net_transmit"].transform(test_label[:,3].reshape(-1,1))[indexs], color='g')
+    axs[1, 1].set_title('net_transmit')
+    '''
 
-if __name__ == '__main__':
+    axs[0, 0].plot(test_pred[:,0][indexs], color='b')
+    axs[0, 0].plot(test_label[:,0][indexs], color='g')
+    axs[0, 0].set_title('cpu_usage_percent')
 
-    root_data = r"/Users/zhouz/Project/VM_Workload_Predictor/fastStorage/VMmonitoring"
+    axs[0, 1].plot(test_pred[:,1][indexs], color='b')
+    axs[0, 1].plot(test_label[:,1][indexs], color='g')
+    axs[0, 1].set_title('memory_usage')
 
-    if os.path.exists("/Users/zhouz/Project/VM_Workload_Predictor/All_Series.bin") == True:
-        All_Series = np.fromfile("/Users/zhouz/Project/VM_Workload_Predictor/All_Series.bin", dtype=np.float32)
-        
-    else:
-        All_Series = data_process(root_data, 100)
+    axs[1, 0].plot(test_pred[:,2][indexs], color='b')
+    axs[1, 0].plot(test_label[:,2][indexs], color='g')
+    axs[1, 0].set_title('disk_write')
 
+    axs[1, 1].plot(test_pred[:,3][indexs], color='b')
+    axs[1, 1].plot(test_label[:,3][indexs], color='g')
+    axs[1, 1].set_title('net_transmit')
 
-
-    print(All_Series.shape)
-    length = All_Series.shape[0]
-
-    #All_Series = All_Series.reshape(-1, 3)
-    #scaler = MinMaxScaler(feature_range=(-1, 1))
-    #All_Series = scaler.fit_transform(All_Series)
-    #All_Series = All_Series.reshape(length, 100, 3)
-    #print(np.max(All_Series), ' ', np.min(All_Series))
-
-    All_Series, scaler_cpu, scaler_mem, scaler_disk = data_scaler(All_Series)
-
-
-    train_data, train_label, test_data, test_label = data_split(All_Series, 2000, subset=False)
-
-    train_data = torch.from_numpy(train_data).type(torch.Tensor)
-    test_data = torch.from_numpy(test_data).type(torch.Tensor)
-    
-    train_label_lstm = torch.from_numpy(train_label).type(torch.Tensor)
-    test_label_lstm = torch.from_numpy(test_label).type(torch.Tensor)
-
-    input_dim = 3
-    hidden_dim = 32
-    num_layers = 3
-    output_dim = 1
-    num_epochs = 1000
-
-    model = build_model(input_dim, hidden_dim, num_layers, output_dim)
-    #print("##########")
-    criterion = torch.nn.MSELoss()
-    optimiser = torch.optim.Adam(model.parameters(), lr=0.001)
-
-    #hist = np.zeros(num_epochs)
-    start_time = time.time()
-    lstm = []
-
-    y_train_pred, loss_list = train(model, num_epochs, train_data, train_label_lstm, criterion, optimiser)
-    plt.figure()
-    plt.plot(loss_list, color='b', label='loss curve')
-    plt.savefig('loss_curve.png')
-
-    test_predict = evaluation(model, test_data, test_label)
-    print("pred: ", test_predict.shape)
-    print("label: ", test_label.shape)
-    #test_pred = test_pred.reshape(-1,300)
-    #test_label = test_label.reshape(-1,300)
-    print(test_predict.shape)
-    print(test_label.shape)
-    #test_predict = scaler.inverse_transform(test_pred)
-    #test_label = scaler.inverse_transform(test_label)
-    
-    #test_pred = test_pred.reshape(-1,1)
-    #test_label = test_label.reshape(-1,1)
-
-    predict_cpu = test_predict[:, 0].reshape(-1,1)
-    predict_cpu = scaler_cpu.inverse_transform(predict_cpu)
-
-    predict_mem = test_predict[:, 1].reshape(-1,1)
-    predict_mem = scaler_mem.inverse_transform(predict_mem)
-
-    predict_disk = test_predict[:, 2].reshape(-1,1)
-    predict_disk = scaler_disk.inverse_transform(predict_disk)
-
-    label_cpu = test_label[:, 0].reshape(-1,1)
-    label_cpu = scaler_cpu.inverse_transform(label_cpu)
-
-    label_mem = test_label[:, 1].reshape(-1,1)
-    label_mem = scaler_mem.inverse_transform(label_mem)
-
-    label_disk = test_label[:, 2].reshape(-1,1)
-    label_disk = scaler_disk.inverse_transform(label_disk)
-
-
-    plt.figure()
-    plt.plot(predict_cpu, color='r')
-    plt.plot(label_cpu, color='g')
-    plt.xlabel('timestamp')
-    plt.ylabel('cpu')
-    plt.savefig('cpu.png')
-    #plt.legend()
-    #plt.show()
-
-    plt.figure()
-    plt.plot(predict_mem, color='r')
-    plt.plot(label_mem, color='g')
-    plt.xlabel('timestamp')
-    plt.ylabel('memory')
-    plt.savefig('mem.png')
-    #plt.legend()
-    #plt.show()
-
-    plt.figure()
-    plt.plot(predict_disk, color='r')
-    plt.plot(label_disk, color='g')
-    plt.xlabel('timestamp')
-    plt.ylabel('disk')
-    plt.savefig('disk.png')
-    #plt.legend()
-    #plt.show()
-
-'''
+    plt.tight_layout()
+    plt.savefig('comparision.jpg', dpi=300)
 
 
 
