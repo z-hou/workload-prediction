@@ -110,7 +110,7 @@ def train(model, num_epochs, train_loader, test_loader, criterion, optimiser, de
         print("Epoch ", i, "Train Loss: ", round(avg_train_loss.item(), 7), "Test Loss: ", round(avg_test_loss.item(), 7))
             
     ## Save Model
-    torch.save(model, "./checkpoint/model_lastest.pth")
+    torch.save(model, "./checkpoint/model_lastest_h128.pth")
     return train_loss_list, test_loss_list
 
 '''
@@ -162,8 +162,8 @@ def evaluation(model, test_loader, device):
     test_pred = np.concatenate(test_pred, axis=0)
     print("Test label shape: ", test_label.shape, "test_pred shape: ", test_pred.shape)
     print("predcition is: ", test_pred.shape, " | ", test_label.shape)
-    rme_value = math.sqrt(mean_squared_error(test_label, test_pred))
-    print('TOTAL RME value: %.4f RMSE' % (rme_value))
+    #rme_value = math.sqrt(mean_squared_error(test_label, test_pred))
+    #print('TOTAL RME value: %.4f RMSE' % (rme_value))
 
     cpu_label, cpu_pred = test_label[:, :4], test_pred[:, :4]
     cpu_rme_value = math.sqrt(mean_squared_error(cpu_label, cpu_pred))
@@ -180,6 +180,8 @@ def evaluation(model, test_loader, device):
     net_label, net_pred = test_label[:, 12:], test_pred[:, 12:]
     net_rme_value = math.sqrt(mean_squared_error(net_label, net_pred))
     print('NET RME value: %.4f RMSE' % (net_rme_value))
+
+    print('TOTAL RME value: %.4f RMSE' % ((cpu_rme_value+mem_rme_value+disk_rme_value+net_rme_value)/4))
 
     return cpu_label, cpu_pred, mem_label, mem_pred, disk_label, disk_pred, net_label, net_pred
 
@@ -210,7 +212,7 @@ if __name__ == '__main__':
     num_layers = 2
     predict_steps = 4
     output_dim = input_dim * predict_steps
-    num_epochs = 300
+    num_epochs = 150
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -233,13 +235,13 @@ if __name__ == '__main__':
     plt.ylabel("Loss")
 
     plt.plot(train_loss_list, color='b', label='train loss curve')
-    plt.savefig('CPU_train_loss_curve.jpg')
+    plt.savefig('./hidden128/CPU_train_loss_curve.jpg')
 
     plt.figure()
     plt.xlabel("Epochs")
     plt.ylabel("Loss")
     plt.plot(test_loss_list, color='b', label='test loss curve')
-    plt.savefig('CPU_test_loss_curve.jpg')
+    plt.savefig('./hidden128/CPU_test_loss_curve.jpg')
 
     cpu_label, cpu_pred, mem_label, mem_pred, disk_label, disk_pred, net_label, net_pred = evaluation(model, test_data, device)
     
@@ -265,46 +267,40 @@ if __name__ == '__main__':
     net_label_v = net_label[indexs].flatten() # shape = (10,4) => (40,)
     net_pred_v = net_pred[indexs].flatten()
 
-    fig, axs = plt.subplots(2, 2)
+    
+    plt.plot(cpu_pred_v,  color='blue', linewidth=2)
+    plt.plot(cpu_label_v, color='green', linewidth=2)  
+    plt.title('Cpu Usage')
+    plt.xlabel('Time steps')
+    plt.ylabel('Cpu Usage')
+    plt.savefig('./visualization_result/cpu_comparision.jpg', dpi=300)
+    plt.close()
 
-    '''
-    axs[0, 0].plot(scalers["cpu_usage_percent"].transform(test_pred[:,0].reshape(-1,1))[indexs], color='b')
-    axs[0, 0].plot(scalers["cpu_usage_percent"].transform(test_label[:,0].reshape(-1,1))[indexs], color='g')
-    axs[0, 0].set_title('cpu_usage_percent')
+    plt.plot(mem_label_v,  color='blue', linewidth=2)
+    plt.plot(mem_pred_v, color='green', linewidth=2)  
+    plt.title('Memory Usage')
+    plt.xlabel('Time steps')
+    plt.ylabel('Memory Usage')
+    plt.savefig('./visualization_result/Mem_comparision.jpg', dpi=300)
+    plt.close()
 
-    axs[0, 1].plot(scalers["memory_usage"].transform(test_pred[:,1].reshape(-1,1))[indexs], color='b')
-    axs[0, 1].plot(scalers["memory_usage"].transform(test_label[:,1].reshape(-1,1))[indexs], color='g')
-    axs[0, 1].set_title('memory_usage')
+    plt.plot(disk_label_v,  color='blue', linewidth=2)
+    plt.plot(disk_pred_v, color='green', linewidth=2)  
+    plt.title('Disk Write')
+    plt.xlabel('Time steps')
+    plt.ylabel('Disk Write')
+    plt.savefig('./visualization_result/Disk_comparision.jpg', dpi=300)
+    plt.close()
 
-    axs[1, 0].plot(scalers["disk_write"].transform(test_pred[:,2].reshape(-1,1))[indexs], color='b')
-    axs[1, 0].plot(scalers["disk_write"].transform(test_label[:,2].reshape(-1,1))[indexs], color='g')
-    axs[1, 0].set_title('disk_write')
-
-    axs[1, 1].plot(scalers["net_transmit"].transform(test_pred[:,3].reshape(-1,1))[indexs], color='b')
-    axs[1, 1].plot(scalers["net_transmit"].transform(test_label[:,3].reshape(-1,1))[indexs], color='g')
-    axs[1, 1].set_title('net_transmit')
-    '''
-
-    axs[0, 0].plot(cpu_pred_v, color='b')
-    axs[0, 0].plot(cpu_label_v, color='g')
-    axs[0, 0].set_title('cpu_usage_percent')
-
-    axs[0, 1].plot(mem_label_v, color='b')
-    axs[0, 1].plot(mem_pred_v, color='g')
-    axs[0, 1].set_title('memory_usage')
-
-    axs[1, 0].plot(disk_label_v, color='b')
-    axs[1, 0].plot(disk_pred_v, color='g')
-    axs[1, 0].set_title('disk_write')
-
-    axs[1, 1].plot(net_label_v, color='b')
-    axs[1, 1].plot(net_pred_v, color='g')
-    axs[1, 1].set_title('net_transmit')
-
-    plt.tight_layout()
-    plt.savefig('comparision.jpg', dpi=300)
-
-
+    plt.plot(net_label_v,  color='blue', linewidth=2)
+    plt.plot(net_pred_v, color='green', linewidth=2)  
+    plt.title('Network received')
+    plt.xlabel('Time steps')
+    plt.ylabel('Network received')
+    plt.savefig('./visualization_result/Net_comparision.jpg', dpi=300)
+    plt.close()
+    
+    print("Saved at visualization result")
 
 
 
