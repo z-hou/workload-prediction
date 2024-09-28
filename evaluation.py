@@ -43,7 +43,7 @@ if __name__ == '__main__':
     print(f"Using device: {device}")
 
     ##Load model
-    model_path = "./checkpoint/model_lastest.pth"
+    model_path = "./checkpoint/model_lastest_h128.pth"
     LSTM_model = torch.load(model_path)
     LSTM_model.eval()
     LSTM_model.to(device)
